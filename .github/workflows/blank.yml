@@ -2,7 +2,7 @@ name: CI
 
 on:
   schedule:
-    - cron: "0 2 1 * *"
+    - cron: "0 2 1 * *"  # 每月1日凌晨2点执行
   push:
     branches:
       - main
@@ -11,42 +11,76 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Install acme.sh
-      run: |
-                curl https://get.acme.sh | sh -s email=1102304904@qq.com
-    - name: Issue Certificates
-      env:
-        ACME: /home/runner/.acme.sh/acme.sh
-        DP_Id: ${{ secrets.DP_Id }}
-        DP_Key: ${{ secrets.DP_Key }}
-      run: |
-        mkdir -p ./ssl/nfby.net
-        $ACME --issue --dns dns_dp -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net' -k ec-256
-        $ACME --installcert --ecc -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net' --ca-file ./ssl/nfby.net/chain.pem --cert-file ./ssl/nfby.net/cert.pem --key-file ./ssl/nfby.net/key.pem --fullchain-file ./ssl/nfby.net/fullchain.pem
-        zip -r ssl.zip ssl        
-    - name: Get current date
-      id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
-      with:
-        tag_name: v${{ steps.date.outputs.date }}
-        release_name: ${{ steps.date.outputs.date }}
-        body: |
-                    Renew certificate files at ${{ steps.date.outputs.date }}
-        draft: false
-        prerelease: false
-    - name: Upload Release Asset
-      id: upload_release_asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./ssl.zip
-        asset_name: ssl.zip
-        asset_content_type: application/zip
-   
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl socat
+
+      - name: Install acme.sh
+        run: |
+          curl https://get.acme.sh | sh -s email=1102304904@qq.com
+          # 配置使用 Let's Encrypt CA
+          ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+          # 确保 acme.sh 可执行
+          chmod +x ~/.acme.sh/acme.sh
+
+      - name: Issue/Renew Certificates
+        run: |
+          # 显式导出 DNSPod 环境变量（关键修复）
+          export DP_Id="${{ secrets.DP_Id }}"
+          export DP_Key="${{ secrets.DP_Key }}"
+          
+          # 创建证书存储目录
+          mkdir -p ./ssl/nfby.net
+          
+          # 申请/续期 ECC 证书（修复域名+调试模式）
+          ~/.acme.sh/acme.sh --issue \
+            --dns dns_dp \
+            -d nfby.net \
+            -d '*.nfby.net' \
+            -d '*.ai.nfby.net' \  # 彻底修复域名错误
+            -k ec-256 \
+            --debug 2 \  # 开启调试模式，便于排查问题
+            --force
+          
+          # 安装证书到指定目录
+          ~/.acme.sh/acme.sh --installcert \
+            --ecc \
+            -d nfby.net \
+            -d '*.nfby.net' \
+            -d '*.ai.nfby.net' \
+            --ca-file ./ssl/nfby.net/chain.pem \
+            --cert-file ./ssl/nfby.net/cert.pem \
+            --key-file ./ssl/nfby.net/key.pem \
+            --fullchain-file ./ssl/nfby.net/fullchain.pem
+          
+          # 打包证书文件
+          zip -r ssl.zip ssl
+          
+          # 验证文件
+          ls -la ./ssl/nfby.net/
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+        with:
+          tag_name: v${{ steps.date.outputs.date }}
+          name: SSL Certificates ${{ steps.date.outputs.date }}
+          body: |
+            Renew SSL certificates for nfby.net domain at ${{ steps.date.outputs.date }}
+            - Domain: nfby.net
+            - Wildcard: *.nfby.net
+            - Wildcard: *.ai.nfby.net
+            - Algorithm: ECC-256
+          files: ./ssl.zip
+          draft: false
+          prerelease: false
+          overwrite: true
