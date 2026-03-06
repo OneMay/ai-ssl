@@ -21,8 +21,8 @@ jobs:
         DP_Key: ${{ secrets.DP_Key }}
       run: |
         mkdir -p ./ssl/nfby.net
-        $ACME --issue --dns dns_dp -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net.net' -k ec-256
-        $ACME --installcert --ecc -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net.net' --ca-file ./ssl/nfby.net/chain.pem --cert-file ./ssl/nfby.net/cert.pem --key-file ./ssl/nfby.net/key.pem --fullchain-file ./ssl/nfby.net/fullchain.pem
+        $ACME --issue --dns dns_dp -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net' -k ec-256
+        $ACME --installcert --ecc -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net' --ca-file ./ssl/nfby.net/chain.pem --cert-file ./ssl/nfby.net/cert.pem --key-file ./ssl/nfby.net/key.pem --fullchain-file ./ssl/nfby.net/fullchain.pem
         zip -r ssl.zip ssl        
     - name: Get current date
       id: date
