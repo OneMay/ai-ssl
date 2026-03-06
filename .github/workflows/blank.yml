@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  schedule:
+    - cron: "0 2 1 * *"
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install acme.sh
+      run: |
+                curl https://get.acme.sh | sh -s email=1102304904@qq.com
+    - name: Issue Certificates
+      env:
+        ACME: /home/runner/.acme.sh/acme.sh
+        DP_Id: ${{ secrets.DP_Id }}
+        DP_Key: ${{ secrets.DP_Key }}
+      run: |
+        mkdir -p ./ssl/nfby.net
+        $ACME --issue --dns dns_dp -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net.net' -k ec-256
+        $ACME --installcert --ecc -d nfby.net -d '*.nfby.net' -d '*.ai.nfby.net.net' --ca-file ./ssl/nfby.net/chain.pem --cert-file ./ssl/nfby.net/cert.pem --key-file ./ssl/nfby.net/key.pem --fullchain-file ./ssl/nfby.net/fullchain.pem
+        zip -r ssl.zip ssl        
+    - name: Get current date
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+      with:
+        tag_name: v${{ steps.date.outputs.date }}
+        release_name: ${{ steps.date.outputs.date }}
+        body: |
+                    Renew certificate files at ${{ steps.date.outputs.date }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Asset
+      id: upload_release_asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./ssl.zip
+        asset_name: ssl.zip
+        asset_content_type: application/zip
+   
